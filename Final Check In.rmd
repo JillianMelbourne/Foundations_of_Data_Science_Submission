@@ -1,0 +1,342 @@
+---
+title: "Check_In"
+output:
+  pdf_document: default
+  html_document: default
+date: "2025-09-25"
+---
+
+```{r}
+# set working directory 
+setwd("/Users/jmelb/Projects/HDS-Foundations_of_Data_Science/Final_Project/")
+
+# 1.a.i read in data 
+counts <- read.csv("data/counts.csv", row.names = 1, check.names = FALSE, stringsAsFactors = FALSE)
+meta_data <- read.csv("data/meta_data.csv")
+meta_data <- data.frame(meta_data)
+```
+For Gene 1: I selected the gene ENSG00000003402.20 (CFLAR) because it is 
+implicated in apoptosis and immune response regulation. In cancer, elevated 
+expression of CFLAR is correlated with resistance to therapy 
+(Zhang et al., J Inflamm Res, 2025)
+
+For Gene 2: I selected the gene ENSG00000000003.15 (TSPAN6) because it is 
+involved in extracellular signalling to recruit immune cells the tumor 
+microenvionrment (Molostvov et al., Cell Rep, 2023)
+
+```{r}
+# 2.a.  
+# prep for figure generation 
+library(ggplot2)
+
+# make data frame with both genes
+gene_data <- data.frame(
+  barcode = colnames(counts),
+  gene1 = as.numeric(counts['ENSG00000003402.20', ]),
+  gene2 = as.numeric(counts['ENSG00000000003.15', ]))
+
+# pull in Hunter's Cooler code 
+coolor_code <- cool_palette <- c(
+  "#E3E9EA",
+  "#B8C4C2",
+  "#7A9E9F",
+  "#527C83",
+  "#314D58",
+  "#585858"
+)
+
+# set themes for subsequent plots
+theme_set(
+  theme_minimal(base_family = "Helvetica", base_size = 12) +
+    theme(
+      # backgrounds
+      plot.background  = element_rect(fill = coolor_code[1], color = NA),
+      panel.background = element_rect(fill = coolor_code[1], color = NA),
+
+      # grid lines
+      panel.grid.major = element_line(color = coolor_code[2], linewidth = 0.4),
+      panel.grid.minor = element_line(color = coolor_code[2], linewidth = 0.2, linetype = "dotted"),
+
+      # text and titles
+      plot.title = element_text(
+        hjust = 0.5,
+        face = "bold",
+        size = 14,
+        color = coolor_code[5]
+      ),
+      axis.title = element_text(face = "bold", color = coolor_code[5]),
+      axis.text  = element_text(color = coolor_code[5]),
+
+    )
+)
+
+```
+
+
+```{r}
+# 3.b. Generate summary statistics 
+print(summary(gene_data$gene1))
+print(sd(gene_data$gene1))
+
+print(summary(gene_data$gene2))
+print(sd(gene_data$gene2))
+```
+
+
+```{r}
+# 3. Visualization
+# 3.a.- Histogram
+p <- ggplot(gene_data, aes(x = gene1)) +
+  geom_histogram(aes(y = after_stat(count)), binwidth = 500, 
+                 fill = coolor_code[3], color = coolor_code[5]) +
+  geom_density(aes(y = after_stat(count) * 500), color = coolor_code[5], 
+               linewidth = 1, alpha = .5) +
+  labs(
+    title = "Histogram of CFLAR Expression Values",
+    x = "Expression Values",
+    y = "Frequency"
+  )
+
+print(p)
+png("/Users/jmelb/Projects/HDS-Foundations_of_Data_Science/Final_Project/figures_tables/hist.png", width = 2000, height = 1500, res = 300)
+print(p)
+dev.off()
+```
+
+
+```{r}
+# 3.b. - Scatter plot
+library(ggpubr)
+
+
+# plot gene1 against gene2
+p <- ggplot(gene_data, aes(x = gene1, y = gene2)) +
+  # add scatter plot 
+  geom_point(
+    fill  = coolor_code[3],
+    color = coolor_code[5],
+    shape = 21,
+    size  = 4,
+    stroke = .3,             
+    alpha = 0.65
+  ) +
+  # add regression line with cooler code colors
+  geom_smooth(
+    method = "lm",
+    se = TRUE, # add confidence interval 
+    color = coolor_code[6],   
+    fill  = coolor_code[6], 
+    alpha = 0.7,
+    linewidth = 1.1
+  ) +
+  labs(
+    title = "CFLAR | TSPAN6",
+    x = "CFLAR",
+    y = "TSPAN6") +
+  # add regression line equation
+  stat_regline_equation(
+    aes(label = paste(after_stat(eq.label), sep = "~~~")),
+    label.x.npc = "left",   # x position. - leftcorner 
+    label.y.npc = 0.95,      # y position - upper corner
+    color = coolor_code[6],
+    size = 4
+  ) +
+  # add correlation coefficient and p value 
+  stat_cor(
+    aes(label = paste(after_stat(r.label), after_stat(p.label), sep = "~`,`~")),
+    label.x.npc = "left",    # same x position 
+    label.y.npc = 0.87,       # slightly below other y 
+    color = coolor_code[6],
+    size = 4
+  )
+
+print(p)
+png("/Users/jmelb/Projects/HDS-Foundations_of_Data_Science/Final_Project/figures_tables/scatter.png", width = 2000, height = 1500, res = 300)
+print(p)
+dev.off()
+
+```
+
+
+
+
+```{r}
+# 3.c. - Violin plot
+# define data frame for gene of interest
+meta_col <- "tissue_type"   # <-- change this to any column in meta (e.g., "definition")
+
+# merge gene and meta data 
+gene_meta <- merge(gene_data[, c("barcode", "gene1")], meta_data[, c("barcode", meta_col)], by = "barcode", all.x = TRUE)
+
+# make sure tissue_type is a factor not a continuous variable
+gene_meta$tissue_type <- as.factor(gene_meta$tissue_type)
+
+library(ggplot2)
+# make violin plot
+p <- ggplot(gene_meta, aes(x = tissue_type, y = gene1, fill = tissue_type)) +
+  geom_violin() + 
+  scale_fill_manual(values = coolor_code[2:5]) +
+  labs(
+    x = "Tissue Type",
+    y = "CFLAR Gene Expression",
+    fill = "Tissue Type", # reformat fill legend
+    title = "CFLAR Expression Distribution by Tissue Type"
+  )
+print(p)
+png("/Users/jmelb/Projects/HDS-Foundations_of_Data_Science/Final_Project/figures_tables/violin.png", width = 2000, height = 1500, res = 300)
+print(p)
+dev.off()
+
+```
+Heatmap Analysis: 
+Select 10 genes: Choose a set of 10 different genes from the count matrix for your heatmap.
+Generate a Heatmap: Use the ComplexHeatmap package in R to create a heatmap of the count data for the selected genes. 
+Add an Annotation Bar: Include an annotation bar reflecting your chosen covariate for further context and interpretation of the data.
+
+
+```{r}
+# implement Chayce's method for changing ensemble ID ==> Gene Names 
+library(biomaRt)
+
+# find top ten most variable genes
+gene_vars <- apply(counts, 1, var)
+genes_to_plot <- names(sort(gene_vars, decreasing = TRUE)[1:10])
+
+# subset genes 
+counts_subset <- counts[genes_to_plot, ]
+
+# Remove version suffix from ensembl IDs
+genes_to_plot <- sub("\\.\\d+$", "", genes_to_plot)
+rownames(counts_subset) <- sub("\\.\\d+$", "", rownames(counts_subset))
+
+
+# Connect to ensembl with mirror
+ensembl_df <- useEnsembl(
+  biomart = "genes",
+  dataset = "hsapiens_gene_ensembl", # human genes
+  mirror = "useast"   # use mirror because original ensembl not available
+)
+
+# get ensembl gene names for genes_to_plot values 
+gene_names <- getBM(
+  attributes = c("ensembl_gene_id", "external_gene_name"),
+  filters   = "ensembl_gene_id",
+  values    = genes_to_plot,
+  mart      = ensembl_df
+)
+
+
+
+# make rownames ensembl_gene_id
+rownames(gene_names) <- gene_names$ensembl_gene_id
+
+# remove ensembl_gene_id
+gene_names$ensembl_gene_id <- NULL
+
+# check 
+head(gene_names)
+
+#merge external names with counts_subset
+subset_merged <- merge(gene_names, counts_subset,  by = "row.names", all = TRUE)
+
+# rinse and repeat 
+# make rownames external_gene_name
+rownames(subset_merged) <- subset_merged$external_gene_name
+
+# remove ensembl_gene_id
+subset_merged$external_gene_name <- NULL
+subset_merged$Row.names <- NULL
+
+
+head(subset_merged)
+```
+
+
+```{r}
+# Heatmap Analysis
+library (ComplexHeatmap)
+
+## Heatmap annotations
+column_ha <- HeatmapAnnotation(
+  # change annotation track names 
+  "Tissue Type" = meta_data$tissue_type,
+  "Gender"      = meta_data$gender,
+  # set colors 
+  col = list(
+    "Tissue Type" = c(Tumor = "red", Normal = "blue"),
+    "Gender"      = c(male  = "green", female = "purple")
+  ),
+  # change legend titles and labels 
+  annotation_legend_param = list(
+    "Tissue Type" = list(title = "Tissue Type", labels = c("Normal Tissue","Tumor Tissue")),
+    "Gender"      = list(title = "Gender",      labels = c("Female","Male"))
+  ),
+  # position annotations on the right 
+  annotation_name_side = "right",   
+  show_annotation_name = TRUE
+)
+
+
+# Create heatmap
+p <- Heatmap(
+  subset_merged,
+  name = "Counts",
+  top_annotation = column_ha,
+  show_row_names = TRUE,
+  show_column_names = FALSE,
+  cluster_columns = TRUE,
+  cluster_rows = TRUE,
+  column_title = "Samples",
+  row_title = "Genes",
+  heatmap_legend_param = list(title = "Count")
+)
+
+print(p)
+png("/Users/jmelb/Projects/HDS-Foundations_of_Data_Science/Final_Project/figures_tables/heatmap.png", width = 2000, height = 1500, res = 300)
+print(p)
+dev.off()
+```
+
+```{r}
+# make a new plot! I chose a cumulative distribution function 
+# Cumulative Distribution Function
+p <- ggplot(gene_data, aes(x = gene1)) +
+  # shaded area under ECDF
+  stat_ecdf(
+    geom = "area",
+    fill = coolor_code[3],
+    alpha = 0.25
+  ) +
+  # ECDF line 
+  stat_ecdf(
+    geom = "step",
+    color = coolor_code[3],
+    linewidth = 1
+  ) +
+  # median line
+  geom_vline(
+    xintercept = median(gene_data$gene1, na.rm = TRUE),
+    linetype = "dashed",
+    color = coolor_code[5],
+    linewidth = 0.6
+  ) +
+  # add median line text
+  annotate("text", x =5600 , y = 0.75, label = "Median",
+           vjust = -0.6, color = coolor_code[5], size = 3) +
+  labs(
+    title = "CDF of CFLAR",
+    x = "Expression Values",
+    y = "Cumulative Probability"
+  ) 
+
+print(p)
+png("/Users/jmelb/Projects/HDS-Foundations_of_Data_Science/Final_Project/figures_tables/CDF.png", width = 2000, height = 1500, res = 300)
+print(p)
+dev.off()
+
+
+
+```
+
+
+
